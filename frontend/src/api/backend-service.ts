@@ -29,10 +29,17 @@ export async function runAction(
   key: string,
   id: number,
   action: string,
+  options: { requestId?: string; values?: Record<string, string> } = {},
 ): Promise<ActionResult> {
   const response = await request(`/api/${key}/${id}/actions`, {
     method: 'POST',
-    body: JSON.stringify({ action }),
+    // request_id 标识同一次提交（如一次启动确认），重试时复用；
+    // values 承载批次结算的实际完成数/失败数等业务统计。
+    body: JSON.stringify({
+      action,
+      request_id: options.requestId,
+      values: options.values ?? {},
+    }),
   })
   return await response.json()
 }

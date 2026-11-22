@@ -5,36 +5,38 @@ from typing import Any
 
 from app.store import store
 from app.services.base import BaseModuleService, register_hook
+from app.services import dispatch
 from app import persistence as persist
 
 
-def _create_batch_on_start(entry: dict[str, Any]) -> None:
-    """调度计划启动运行时，自动创建batch_queue批次。"""
-    batch_rows = store.rows("batch_queue")
-    new_id = max((int(r.get("id", 0)) for r in batch_rows), default=0) + 1
-    batch = {
-        "id": new_id,
-        "批次编号": f"BATC-AUTO-{new_id:04d}",
-        "关联计划": entry.get("计划编号", ""),
-        "任务数量": 10,
-        "完成数": "0",
-        "失败数": "0",
-        "批次状态": "由调度自动生成",
-        "截止时间": persist.now_iso(),
-        "优先级": "中",
-        "status": "排队中",
-        "pending": True,
-        "abnormal": False,
-        "version": "",
-        "updated_at": persist.now_iso(),
-    }
-    batch_rows.append(batch)
-    persist.append_jsonl("runs", "batch_queue.jsonl", {
-        "module": "batch_queue", "entity": "采集批次", "entry_id": new_id,
-        "status": "排队中", "version": "", "action": "auto_create_from_schedule",
-        "timestamp": persist.now_iso(), "abnormal": False,
-        "source_module": "script_schedule", "source_id": entry.get("id"),
-    })
+def _resolve_script(plan: dict[str, Any]) -> dict[str, Any] | None:
+    """按计划上的关联脚本回查行为脚本，用于把脚本ID交给来源回执。"""
+    script_code = plan.get("关联脚本", "")
+    for script in store.rows("behavior_script"):
+        if script.get("脚本编号") == script_code:
+            return script
+    return None
+
+
+def _create_batch_on_start(entry: dict[str, Any], context: dict[str, Any]) -> None:
+    """调度计划启动运行时，交给batch_queue消费本次启动的调度回执并创建批次。
+
+    回执先行：同一次启动确认（计划 + 请求身份）反复确认只对应一个批次；
+    回执写成功而批次尚未创建时，重试会复用回执并补建批次。
+    未提供请求身份时按原有行为每次启动生成一次性身份。
+    """
+    # 延迟导入：批次的消费逻辑归 batch_queue 所有，避免模块级循环依赖。
+    from app.services.batch_queue import ensure_batch_for_receipt
+
+    script = _resolve_script(entry)
+    with dispatch.RECEIPT_LOCK:
+        receipt = dispatch.write_start_receipt(
+            plan=entry,
+            script_id=script.get("id") if script else None,
+            script_code=entry.get("关联脚本", ""),
+            request_identity=context.get("identity"),
+        )
+        ensure_batch_for_receipt(receipt, plan=entry, script=script)
 
 register_hook("script_schedule", "启动运行", _create_batch_on_start)
 

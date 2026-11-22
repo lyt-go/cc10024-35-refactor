@@ -8,7 +8,7 @@ from app.services.base import BaseModuleService, register_hook
 from app import persistence as persist
 
 
-def _validate_selector_on_active(entry: dict[str, Any]) -> None:
+def _validate_selector_on_active(entry: dict[str, Any], _context: dict[str, Any]) -> None:
     """元素锚点标记生效时，校验关联脚本是否存在且已生效。"""
     script_code = entry.get("关联脚本", "")
     scripts = store.rows("behavior_script")

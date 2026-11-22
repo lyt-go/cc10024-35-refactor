@@ -5,17 +5,30 @@ from typing import Any
 
 from app.store import store
 from app.services.base import BaseModuleService, register_hook
+from app.services import dispatch
 from app import persistence as persist
 
 
-def _auto_schedule_on_active(entry: dict[str, Any]) -> None:
-    """行为脚本标记生效后，自动在script_schedule创建默认调度计划。"""
+def _auto_schedule_on_active(entry: dict[str, Any], _context: dict[str, Any]) -> None:
+    """行为脚本标记生效后，自动在script_schedule创建默认调度计划。
+
+    脚本与计划的关系通过采集调度回执交接，计划上同时保留回执号；
+    同一脚本重新生效会生成新计划与新回执，旧计划的关系不受影响。
+    先落回执再落计划：即便随后的计划写入中断，重试也不会丢来源。
+    """
     schedule_rows = store.rows("script_schedule")
     new_id = max((int(r.get("id", 0)) for r in schedule_rows), default=0) + 1
     script_code = entry.get("脚本编号", f"BEHA-{entry.get('id')}")
+    plan_code = f"SCRI-AUTO-{new_id:04d}"
+    receipt = dispatch.write_plan_receipt(
+        script_id=entry.get("id"),
+        script_code=script_code,
+        plan_id=new_id,
+        plan_code=plan_code,
+    )
     schedule = {
         "id": new_id,
-        "计划编号": f"SCRI-AUTO-{new_id:04d}",
+        "计划编号": plan_code,
         "关联脚本": script_code,
         "触发条件": "启动后即触发",
         "执行间隔": "3600s",
@@ -23,6 +36,7 @@ def _auto_schedule_on_active(entry: dict[str, Any]) -> None:
         "依赖任务": "",
         "超时控制": "1800s",
         "计划状态": "由行为脚本自动生成",
+        "调度回执": receipt.get("回执编号", ""),
         "status": "草稿",
         "pending": True,
         "abnormal": False,
@@ -35,6 +49,8 @@ def _auto_schedule_on_active(entry: dict[str, Any]) -> None:
         "status": "草稿", "version": "", "action": "auto_create_from_behavior_script",
         "timestamp": persist.now_iso(), "abnormal": False,
         "source_module": "behavior_script", "source_id": entry.get("id"),
+        "调度回执": receipt.get("回执编号", ""),
+        "来源脚本": script_code, "来源计划": plan_code,
     })
 
 # 注册跨模块钩子：behavior_script标记生效 → script_schedule自动创建

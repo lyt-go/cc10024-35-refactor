@@ -8,7 +8,7 @@ from app.services.base import BaseModuleService, register_hook
 from app import persistence as persist
 
 
-def _record_recovery_to_history(entry: dict[str, Any]) -> None:
+def _record_recovery_to_history(entry: dict[str, Any], _context: dict[str, Any]) -> None:
     """恢复任务确认恢复后写入run_history。"""
     run_rows = store.rows("run_history")
     new_id = max((int(r.get("id", 0)) for r in run_rows), default=0) + 1

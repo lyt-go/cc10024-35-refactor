@@ -8,6 +8,10 @@ from typing import Any
 
 from app.seed import SEED_ROWS
 
+# 仅作为跨模块交接凭据保存、不对外暴露成业务模块的内部表。
+# 放在 module_names/overview 之外，避免改变现有模块数量与看板口径。
+INTERNAL_TABLES = {"dispatch_receipt"}
+
 
 class Store:
     def __init__(self) -> None:
@@ -16,10 +20,14 @@ class Store:
         }
 
     def module_names(self) -> list[str]:
-        return sorted(self._tables)
+        return sorted(name for name in self._tables if name not in INTERNAL_TABLES)
 
     def rows(self, module: str) -> list[dict[str, Any]]:
         return self._tables.setdefault(module, [])
+
+    def internal_rows(self, name: str) -> list[dict[str, Any]]:
+        """内部交接表：参与内存读写，但不进入模块列表和运营概览。"""
+        return self._tables.setdefault(name, [])
 
     def find(self, module: str, entry_id: int) -> dict[str, Any] | None:
         for row in self.rows(module):

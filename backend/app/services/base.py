@@ -18,8 +18,16 @@ def _version_id(entry: dict[str, Any]) -> str:
 _CROSS_MODULE_HOOKS: dict[tuple[str, str], list[Callable[[dict[str, Any]], None]]] = {}
 
 
-def register_hook(module: str, action: str, callback: Callable[[dict[str, Any]], None]) -> None:
-    """注册跨模块钩子：当某个模块执行某个动作时，自动触发回调。"""
+def register_hook(
+    module: str,
+    action: str,
+    callback: Callable[[dict[str, Any], dict[str, Any]], None],
+) -> None:
+    """注册跨模块钩子：当某个模块执行某个动作时，自动触发回调。
+
+    回调签名 (entry, context)：context 携带动作请求的附加交接信息
+    （如启动身份），没有时为空字典。
+    """
     key = (module, action)
     if key not in _CROSS_MODULE_HOOKS:
         _CROSS_MODULE_HOOKS[key] = []
@@ -88,7 +96,13 @@ class BaseModuleService:
         self._persist_to_jsonl(entry, action="create")
         return entry, []
 
-    def run_action(self, entry_id: int, action: str) -> tuple[dict[str, Any] | None, str]:
+    def run_action(
+        self,
+        entry_id: int,
+        action: str,
+        *,
+        context: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any] | None, str]:
         entry = store.find(self.MODULE, entry_id)
         if entry is None:
             return None, f"{self.ENTITY} {entry_id} 不存在或已归档"
@@ -109,7 +123,7 @@ class BaseModuleService:
         self._persist_to_jsonl(entry, action=action)
 
         # 跨模块副作用
-        self._fire_cross_module_hooks(entry, action)
+        self._fire_cross_module_hooks(entry, action, context or {})
 
         return entry, f"{self.ENTITY}已{action}"
 
@@ -127,11 +141,16 @@ class BaseModuleService:
         }
         persist.append_jsonl("runs", f"{self.MODULE}.jsonl", record)
 
-    def _fire_cross_module_hooks(self, entry: dict[str, Any], action: str) -> None:
-        """触发已注册的跨模块钩子。"""
+    def _fire_cross_module_hooks(
+        self,
+        entry: dict[str, Any],
+        action: str,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        """触发已注册的跨模块钩子；context 承载动作请求里的启动身份等交接信息。"""
         key = (self.MODULE, action)
         for hook in _CROSS_MODULE_HOOKS.get(key, []):
-            hook(entry)
+            hook(entry, context or {})
 
     def domain_snapshot(self) -> dict[str, Any]:
         """输出模块级数据质量快照，供跨模块消费和题位源码锚点使用。"""

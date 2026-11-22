@@ -29,3 +29,8 @@ class EntryPayload(BaseModel):
 class ActionPayload(BaseModel):
     action: str
     remark: str | None = None
+    # 启动/结算等动作的请求身份：同一次提交重试时携带同一个值，
+    # 用于识别重复确认；不同身份视为另一次有意启动。
+    request_id: str | None = None
+    # 批次结算的实际完成数/失败数，由调用方随动作提交。
+    values: dict[str, Any] = Field(default_factory=dict)

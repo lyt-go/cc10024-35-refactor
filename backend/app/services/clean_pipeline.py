@@ -8,7 +8,7 @@ from app.services.base import BaseModuleService, register_hook
 from app import persistence as persist
 
 
-def _trigger_transform_on_enable(entry: dict[str, Any]) -> None:
+def _trigger_transform_on_enable(entry: dict[str, Any], _context: dict[str, Any]) -> None:
     """清洗工序启用时自动检查关联转换规则是否就绪。"""
     pipeline_id = entry.get("工序编号", "")
     transforms = [t for t in store.rows("transform_rule") if t.get("关联工序") == pipeline_id]

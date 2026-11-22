@@ -9,7 +9,7 @@ from app.services.base import BaseModuleService, register_hook
 from app import persistence as persist
 
 
-def _auto_dedup_and_check_on_confirm(entry: dict[str, Any]) -> None:
+def _auto_dedup_and_check_on_confirm(entry: dict[str, Any], _context: dict[str, Any]) -> None:
     """运行历史确认完成时触发自动去重和Schema校验。"""
     # 触发page_dedup去重
     dedup_rows = store.rows("page_dedup")
